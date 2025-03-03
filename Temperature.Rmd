@@ -1,0 +1,379 @@
+```{r}
+# 加载时间序列包
+library(stats)
+
+# 读取CSV文件
+temperature_data <- read.csv("F:\\Desktop\\时间序列分析\\Temperature_Vienna_OnlyCelsius.csv")
+# 合并 month, day, year 列
+temperature_data$date <- as.Date(paste(temperature_data$Year, temperature_data$Month, temperature_data$Day, sep = "-"))
+# 删除原始的 month, day, year 列
+temperature_data <- subset(temperature_data, select = -c(Month, Day, Year))
+# 26条缺失值，手动补数据
+temperature_data[835,"Celsius_Temperature"]=-2.740740741
+temperature_data[836,"Celsius_Temperature"]=-4.481481481
+temperature_data[841,"Celsius_Temperature"]=-3.888888889
+temperature_data[842,"Celsius_Temperature"]=-5.166666667
+temperature_data[852,"Celsius_Temperature"]=3.138888889
+temperature_data[2107,"Celsius_Temperature"]=23.1
+temperature_data[2108,"Celsius_Temperature"]=23.4222222
+temperature_data[2109,"Celsius_Temperature"]=23.7444444
+temperature_data[2110,"Celsius_Temperature"]=24.0666667
+temperature_data[4004,"Celsius_Temperature"]=19.1388889
+temperature_data[4397,"Celsius_Temperature"]=11.66666667
+temperature_data[4594,"Celsius_Temperature"]=15.83333333
+temperature_data[6358,"Celsius_Temperature"]=1.083333333
+temperature_data[7051,"Celsius_Temperature"]=-0.407407407
+temperature_data[7052,"Celsius_Temperature"]=-1.314814815
+temperature_data[7178,"Celsius_Temperature"]=12.5
+temperature_data[7317,"Celsius_Temperature"]=13.72222222
+temperature_data[7368,"Celsius_Temperature"]=2.444444444
+temperature_data[7787,"Celsius_Temperature"]=5
+temperature_data[8101,"Celsius_Temperature"]=7.166666667
+temperature_data[8102,"Celsius_Temperature"]=5
+temperature_data[8262,"Celsius_Temperature"]=14.97222222
+temperature_data[8284,"Celsius_Temperature"]=8.32222222
+temperature_data[8285,"Celsius_Temperature"]=9.97777778
+temperature_data[8286,"Celsius_Temperature"]=11.63333333
+temperature_data[8287,"Celsius_Temperature"]=13.28888889
+filtered_data_2 <- temperature_data[temperature_data$Celsius_Temperature == -72.77777778, ]
+
+# 分训练集，测试集
+# 创建训练集（2019-01-01之前）和测试集（2019-01-01之后）
+train_data <- subset(temperature_data, date < "2019-01-01")
+test_data <- subset(temperature_data, date >= "2019-01-01")
+# 显示训练集和测试集的行数
+cat("训练集观测数量：", nrow(train_data), "\n")
+cat("测试集观测数量：", nrow(test_data), "\n")
+
+# 将数据集转换为时间序列对象
+temperature_ts <- ts(train_data$Celsius_Temperature,start = c(1996,9,11),frequency = 365)
+all_ts <- ts(temperature_data$Celsius_Temperature,start = c(1996,9,11),frequency = 365)
+# 显示时间序列对象的摘要信息
+print(summary(temperature_ts))
+```
+```{r}
+# 绘制温度时间序列的时序图
+pdf("时序图.pdf", width = 8, height = 4)
+plot(temperature_ts, type = "l", main = "Temperature Time Series", ylab = "Temperature", xlab = "Time")
+pdf("散点图.pdf",width = 8, height = 4)
+plot(train_data$date,train_data$Celsius_Temperature ,pch =16 , col = "RED", cex = 0.2)
+```
+```{r}
+# 季节性分解
+seasonal_decompose_m <- decompose(temperature_ts, type = c( "multiplicative"))
+seasonal_decompose_a <- decompose(temperature_ts, type = c("additive"))
+# 绘制季节分解图
+#pdf("seasonal.pdf",width = 32, height = 4)
+plot(seasonal_decompose_m)
+plot(seasonal_decompose_a)
+```
+```{r}
+
+```
+```{r}
+# 计算移动平均
+ma <- filter(temperature_ts, rep(1/3, 3), sides = 2)
+
+# 绘制移动平均线
+#pdf("Moving Average.pdf",, width = 32, height = 8)
+plot(temperature_ts, main = "Temperature Time Series with Moving Average", ylab = "Temperature (Celsius)")
+lines(ma, col = "red")
+```
+```{r}
+# 加载zoo包
+library(zoo)
+
+# 计算移动标准差
+sd_ma <- rollapply(temperature_ts, width = 3, FUN = sd, align = "center", fill = NA)
+
+# 绘制移动标准差曲线
+plot(temperature_ts, main = "Temperature Time Series with Moving Standard Deviation", ylab = "Temperature (Celsius)")
+lines(sd_ma, col = "blue")
+
+```
+```{r}
+library(tseries)
+# 进行ADF检验
+adf_test <- adf.test(temperature_ts)
+print(adf_test)
+# p值远远小于0.05，表示拒绝原假设，即时间序列是平稳的
+```
+
+```{r}
+# 执行线性趋势分析
+trend_lm <- lm(temperature_ts ~ time(temperature_ts))
+
+# 显示回归模型的摘要信息
+summary(trend_lm)
+
+# 绘制数据和趋势线
+plot(temperature_ts, main = "Temperature Time Series with Linear Trend", ylab = "Temperature (Celsius)")
+abline(trend_lm, col = "red")
+```
+```{r}
+
+```
+```{r}
+# 拟合余弦回归模型
+library(TSA)
+har <- harmonic(temperature_ts, 1)
+ml <- lm(temperature_ts ~ har)
+
+# 置信水平（99%）
+alpha <- 0.01
+
+# 使用拟合的模型进行预测
+pred <- predict(ml, interval = "prediction", level = 1 - alpha)
+
+# 绘制拟合值和原始数据以及99%的预测区间
+plot(ts(pred[, 1], freq = 365, start = c(1996, 9, 11)),
+     ylab = 'Temperature', type = 'l', ylim = range(pred),
+     col = "red", main = "拟合值和99%预测区间")
+points(temperature_ts, pch = 16, col = "blue", cex = 0.2)
+lines(ts(pred[, 2], freq = 365, start = c(1996, 9, 11)), col = "green", lty = 2)
+lines(ts(pred[, 3], freq = 365, start = c(1996, 9, 11)), col = "green", lty = 2)
+legend("topleft", legend = c("拟合值", "数据", "99%预测区间"),
+       col = c("red", "blue", "green"), lty = c(1, NA, 2), pch = c(NA, 16, NA))
+
+# 残差-时间图
+plot(y = rstudent(ml), x = as.vector(time(temperature_ts)),
+     xlab = 'Time', ylab = 'Standardized Residuals', type = 'o',
+     pch = 16, col = "blue", cex = 0.2, main = "残差-时间图")
+
+```
+```{r}
+#残差是否符合正态
+hist(rstudent(ml),xlab="标准残差")
+qqnorm(rstudent(ml))
+```
+```{r}
+
+```
+```{r}
+
+
+```
+```{r}
+
+```
+
+
+```{r}
+# 绘制自相关函数（ACF）图
+#pdf("acf.pdf", width = 64, height = 4)
+acf(temperature_ts, lag=365*20, main = "Autocorrelation Plot")
+#明显周期性
+# 绘制偏自相关函数（PACF）图
+#pdf("pacf.pdf", width = 64, height = 4)
+pacf(temperature_ts, lag=365*20,main = "Partial Autocorrelation Plot")
+#明显周期性
+
+```
+```{r}
+# 对温度时间序列数据进行一次差分
+diff_temperature <- diff(temperature_ts)
+
+# 绘制差分后的时间序列图
+plot(diff_temperature, main = "First Difference of Temperature Time Series", ylab = "Differenced Temperature")
+
+```
+```{r}
+# 绘制自相关函数（ACF）图
+acf(diff_temperature, lag = 365 * 20, main = "Autocorrelation Plot")
+# 绘制偏自相关函数（PACF）图
+pacf(diff_temperature, lag = 365 * 20, main = "Partial Autocorrelation Plot")
+#明显周期性
+```
+```{r}
+library(tseries)
+# 进行ADF检验
+adf_test <- adf.test(diff_temperature)
+print(adf_test)
+# p值远远小于0.05，表示拒绝原假设，即时间序列是平稳的
+```
+```{r}
+ts_log=log(temperature_ts)
+summary(ts_log)
+```
+```{r}
+library(TSA)
+
+eacf(temperature_ts)
+```
+```{r}
+library(astsa)
+library(forecast)
+
+# 拟合一个ARIMA模型
+arima_model <- auto.arima(temperature_ts)
+summary(arima_model)
+
+# 提取模型的残差
+residuals <- resid(arima_model)
+
+# 绘制残差的散点图
+plot(residuals, main = "Residuals Scatterplot", ylab = "Residuals")
+```
+```{r}
+# 加载forecast包
+library(forecast)
+
+# 使用auto.arima拟合自动ARMA模型
+arma_model <- auto.arima(temperature_ts)
+
+# 显示模型摘要信息
+summary(arma_model)
+
+# 绘制拟合的模型预测结果
+plot(forecast(arma_model))
+
+```
+```{r}
+library(forecast)
+pdf("ARIMA(3,0,0)(0,1,0)[365].pdf",width = 32, height = 8)
+plot(forecast(arma_model))
+```
+```{r}
+# 使用拟合的ARIMA模型进行未来499个值的预测
+forecast_values <- forecast(arma_model, h = 499)
+
+# 加载 test_data 数据集
+# 请确保你已经加载了 test_data 数据集，以便进行比较
+
+# 绘制预测值和测试数据的对比图
+plot(forecast_values)
+lines(test_data, col = "red")
+
+# 计算残差
+residuals <- residuals(arma_model)
+
+# 绘制残差-时间图
+plot(residuals, xlab = "Time", ylab = "Residuals", type = "o", pch = 16, col = "blue")
+
+# 绘制QQ图
+qqnorm(residuals)
+qqline(residuals)
+
+```
+```{r}
+plot(y=temperature_ts,x=zlag(temperature_ts,d=1),ylab=expression(Y[t]),type="p")
+```
+```{r}
+arima_model <- arima(temperature_ts, order = c(2,0,2),seasonal = c(0,0,0))
+summary(arima_model)
+```
+```{r}
+
+```
+```{r}
+library(forecast)
+best_fit_close <- auto.arima(temperature_ts, ic = "bic", seasonal = TRUE)
+summary(best_fit_close)
+```
+```{r}
+arima_model <- arima(temperature_ts, order = c(3,0,3))
+summary(arima_model)
+```
+```{r}
+set.seed(92397)
+test=arima.sim(model=list(ar=c(rep(0:11),.8),ma=c(rep(0,11),0.7)),n=120)
+res=armasubsets(y=test,nar=14,nma=14,y.name='test',ar.method = 'ols')
+plot(res)
+```
+```{r}
+a=max(temperature_ts)
+temperature_ts_log <- acos(temperature_ts/a)
+plot(temperature_ts_log, type = "l", main = "Temperature Time Series (Log Transformed)", ylab = "Log Temperature")
+```
+```{r}
+arima_model <- arima(temperature_ts, order = c(2, 0, 0))
+summary(arima_model)
+```
+```{r}
+arima_model <- arima(temperature_ts, order = c(2,0,1))
+summary(arima_model)
+```
+```{r}
+arima_model <- arima(temperature_ts, order = c(2,0,2))
+summary(arima_model)
+```
+```{r}
+arima_model <- arima(temperature_ts, order = c(2,0,3))
+summary(arima_model)
+```
+```{r}
+arima_model <- arima(temperature_ts, order = c(3,0,0))
+summary(arima_model)
+```
+```{r}
+arima_model <- arima(temperature_ts, order = c(3,0,1))
+summary(arima_model)
+```
+```{r}
+arima_model <- arima(temperature_ts, order = c(3,0,2))
+summary(arima_model)
+```
+```{r}
+arima_model <- arima(temperature_ts, order = c(3,0,3))
+summary(arima_model)
+```
+```{r}
+library(stats)
+#季节ARIMA
+#一次差分
+ts_diff <- diff(temperature_ts)
+
+plot(ts_diff)
+acf(ts_diff,lag=365*20)
+pacf(ts_diff,lag=365*20)
+```
+```{r}
+arima_model <- arima(temperature_ts, order = c(2, 1, 1), seasonal = list(order = c(0, 1, 0)))
+
+summary(arima_model)
+plot(forecast(arma_model))
+```
+```{r}
+
+lines(test_data, col = "red")
+
+# 计算残差
+residuals <- residuals(arma_model)
+
+# 绘制残差-时间图
+plot(residuals, xlab = "Time", ylab = "Residuals", type = "o", pch = 16, col = "blue")
+
+# 绘制QQ图
+qqnorm(residuals)
+qqline(residuals)
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+
+```
+```{r}
+plot(all_ts)
+```
